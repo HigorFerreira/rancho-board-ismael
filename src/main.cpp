@@ -26,6 +26,7 @@ AsyncWebServer server(80);
 
 MFRC522::MIFARE_Key key;
 
+bool __go_read_rfid = false;
 bool __created_task = false;
 bool __read = false;
 char* read_buffer;
@@ -65,14 +66,7 @@ void setup()
 	server.on("/", HTTP_POST, [](AsyncWebServerRequest *request) {
 		if(!__created_task){
 			__created_task = true;
-			xTaskCreate(
-				ler,
-				"leitura",
-				2048,
-				NULL,
-				1,
-				&longTaskHandle
-			);
+			__go_read_rfid = true;
 		}
 
 		if(__read){
@@ -82,7 +76,7 @@ void setup()
 			response->addHeader("Access-Control-Allow-Headers", "Content-Type");
 			request->send(response);
 
-			esp_restart();
+			// esp_restart();
 		}
 		else{
 			AsyncWebServerResponse *response = request->beginResponse(200, "text/plain", "WAIT");
@@ -112,6 +106,17 @@ void setup()
  
 void loop()
 {
+	if(__go_read_rfid){
+		xTaskCreate(
+			ler,
+			"leitura",
+			2048,
+			NULL,
+			1,
+			&longTaskHandle
+		);
+		__go_read_rfid = false;
+	}
 }
 
 void mensageminicial()
@@ -149,7 +154,7 @@ void ler(void *params) {
 		Serial.print(mfrc522.uid.uidByte[i], HEX);
 	}
 	//Mostra o tipo do cartao
-	Serial.print(F("nTipo do PICC: "));
+	Serial.print(F("\nTipo do PICC: "));
 	byte piccType = mfrc522.PICC_GetType(mfrc522.uid.sak);
 	Serial.println(mfrc522.PICC_GetTypeName((MFRC522::PICC_Type)piccType));
 
