@@ -28,7 +28,6 @@ MFRC522::MIFARE_Key key;
 
 void* tmp_buf;
 
-bool go_free_uid = false;
 bool go_read_tag = false;
 bool tag_already_read = false;
 char* uid_tag = NULL;
@@ -72,7 +71,8 @@ void setup() {
 			request->send(response);
 
             tag_already_read = false;
-            go_free_uid = true;
+            delete[] uid_tag;
+            uid_tag = NULL;
 		}
 		else{
             go_read_tag = true;
@@ -109,12 +109,6 @@ void loop()
         uid_tag = ler();
         tag_already_read = true;
         go_read_tag = false;
-    }
-
-    if(go_free_uid){
-        delete[] uid_tag;
-        uid_tag = NULL;
-        go_free_uid = false;
     }
 }
 
