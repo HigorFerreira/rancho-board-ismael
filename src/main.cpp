@@ -28,6 +28,7 @@ MFRC522::MIFARE_Key key;
 
 void* tmp_buf;
 
+bool go_free_uid = false;
 bool go_read_tag = false;
 bool tag_already_read = false;
 char* uid_tag = NULL;
@@ -62,7 +63,7 @@ void setup() {
 	}
 
 
-	server.on("/", HTTP_POST, [](AsyncWebServerRequest *request) {
+	server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
 		if(tag_already_read){
 			AsyncWebServerResponse *response = request->beginResponse(200, "text/plain", uid_tag);
 			response->addHeader("Access-Control-Allow-Origin", "*");
@@ -71,7 +72,7 @@ void setup() {
 			request->send(response);
 
             tag_already_read = false;
-            memset(uid_tag, 0, sizeof(uid_tag));
+            go_free_uid = true;
 		}
 		else{
             go_read_tag = true;
@@ -108,6 +109,12 @@ void loop()
         uid_tag = ler();
         tag_already_read = true;
         go_read_tag = false;
+    }
+
+    if(go_free_uid){
+        delete[] uid_tag;
+        uid_tag = NULL;
+        go_free_uid = false;
     }
 }
 
@@ -154,10 +161,11 @@ char* ler() {
 }
 
 char* getUid(MFRC522 &rf){
-	char* uidString = new char[rf.uid.size + 1]; // +1 para o caractere nulo de terminação
+    int stringSize = rf.uid.size*2 + 1;
+	char* uidString = new char[stringSize]; // +1 para o caractere nulo de terminação
 
 	// Limpar a string para garantir que ela esteja vazia antes de preenchê-la
-	memset(uidString, 0, sizeof(uidString));
+	memset(uidString, 0, stringSize);
 
 	// Converter cada byte do UID para sua representação hexadecimal e armazená-lo na string
 	int index = 0;
