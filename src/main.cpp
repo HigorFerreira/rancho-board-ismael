@@ -11,6 +11,7 @@
 
 void mensageminicial();
 void mensagem_inicial_cartao();
+void menssagem_timeout();
 char* ler();
 char* getUid(MFRC522&);
  
@@ -26,13 +27,19 @@ AsyncWebServer server(80);
 
 MFRC522::MIFARE_Key key;
 
+#define TIMEOUT_TIME 10000 //10 segundos de timeout
+
 void* tmp_buf;
+
+bool timeout = false;
+int timeout_counter = 0;
 
 bool go_read_tag = false;
 bool tag_already_read = false;
 char* uid_tag = NULL;
 
- 
+bool show_timeout_message = false;
+
 void setup() {
 	Serial.begin(115200);	 //Inicia a serial
 	Serial.println("Configurando....");
@@ -63,6 +70,20 @@ void setup() {
 
 
 	server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
+        if(timeout){
+            tag_already_read = false;
+            timeout = false;
+            timeout_counter = 0;
+
+            AsyncWebServerResponse *response = request->beginResponse(408, "text/plain", "TIMEOUT");
+			response->addHeader("Access-Control-Allow-Origin", "*");
+			response->addHeader("Access-Control-Allow-Methods", "POST, GET, OPTIONS");
+			response->addHeader("Access-Control-Allow-Headers", "Content-Type");
+			request->send(response);
+
+            return;
+        }
+
 		if(tag_already_read){
 			AsyncWebServerResponse *response = request->beginResponse(200, "text/plain", uid_tag);
 			response->addHeader("Access-Control-Allow-Origin", "*");
@@ -109,19 +130,23 @@ void loop()
         uid_tag = ler();
         tag_already_read = true;
         go_read_tag = false;
+        mensageminicial();
+    }
+
+    if(show_timeout_message){
+        menssagem_timeout();
+        show_timeout_message = false;
     }
 }
 
-void mensageminicial()
-{
+void mensageminicial() {
 	lcd.clear();
 	lcd.print("Aguardando");
 	lcd.setCursor(0, 1);
 	lcd.print("operacoes...");
 }
  
-void mensagem_inicial_cartao()
-{
+void mensagem_inicial_cartao() {
 	Serial.println("Aproxime o seu cartao do leitor...");
 	lcd.clear();
 	lcd.print(" Aproxime o seu");
@@ -129,11 +154,21 @@ void mensagem_inicial_cartao()
 	lcd.print("cartao do leitor");
 }
 
+void menssagem_timeout() {
+    Serial.println("Tempo limite atingido...\n");
+}
+
 char* ler() {
 	mensagem_inicial_cartao();
 	//Aguarda cartao
 	while ( ! mfrc522.PICC_IsNewCardPresent()) {
+        if(timeout_counter >= TIMEOUT_TIME){
+            timeout = true;
+            show_timeout_message = true;
+            return NULL;
+        }
 		delay(400);
+        timeout_counter += 400;
 		Serial.println("Aguardando");
 	}
 	if ( ! mfrc522.PICC_ReadCardSerial()) return NULL;
@@ -150,7 +185,6 @@ char* ler() {
 	byte piccType = mfrc522.PICC_GetType(mfrc522.uid.sak);
 	Serial.println(mfrc522.PICC_GetTypeName((MFRC522::PICC_Type)piccType));
 
-    mensageminicial();
 	return getUid(mfrc522);
 }
 
