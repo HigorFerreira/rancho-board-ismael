@@ -7,11 +7,11 @@
 #include <stdio.h>
 #include <functional>
 #include <ESPAsyncWebServer.h>
-#include <esp_task_wdt.h>
+
 
 void mensageminicial();
 void mensagem_inicial_cartao();
-void ler(void *params);
+char* ler();
 char* getUid(MFRC522&);
  
 //Pinos Reset e SS módulo MFRC522
@@ -26,20 +26,19 @@ AsyncWebServer server(80);
 
 MFRC522::MIFARE_Key key;
 
-bool __go_read_rfid = false;
-bool __created_task = false;
-bool __read = false;
-char* read_buffer;
+void* tmp_buf;
 
-TaskHandle_t longTaskHandle = NULL;
+bool go_read_tag = false;
+bool tag_already_read = false;
+char* uid_tag = NULL;
+
  
-void setup()
-{
+void setup() {
 	Serial.begin(115200);	 //Inicia a serial
 	Serial.println("Configurando....");
 
-	read_buffer = new char[512];
-	for(int i = 0; i < 512; i++) read_buffer[i] = 0;
+    tmp_buf = new char[512];
+    memset(tmp_buf, 0, sizeof(tmp_buf));
 	
 	SPI.begin(); //Inicia SPI bus
 	mfrc522.PCD_Init();	 //Inicia MFRC522
@@ -64,25 +63,24 @@ void setup()
 
 
 	server.on("/", HTTP_POST, [](AsyncWebServerRequest *request) {
-		if(!__created_task){
-			__created_task = true;
-			__go_read_rfid = true;
-		}
-
-		if(__read){
-			AsyncWebServerResponse *response = request->beginResponse(200, "text/plain", read_buffer);
+		if(tag_already_read){
+			AsyncWebServerResponse *response = request->beginResponse(200, "text/plain", uid_tag);
 			response->addHeader("Access-Control-Allow-Origin", "*");
 			response->addHeader("Access-Control-Allow-Methods", "POST, GET, OPTIONS");
 			response->addHeader("Access-Control-Allow-Headers", "Content-Type");
 			request->send(response);
 
-			// esp_restart();
+            tag_already_read = false;
+            memset(uid_tag, 0, sizeof(uid_tag));
 		}
 		else{
-			AsyncWebServerResponse *response = request->beginResponse(200, "text/plain", "WAIT");
+            go_read_tag = true;
+			AsyncWebServerResponse *response = request->beginResponse(202);
 			response->addHeader("Access-Control-Allow-Origin", "*");
 			response->addHeader("Access-Control-Allow-Methods", "POST, GET, OPTIONS");
 			response->addHeader("Access-Control-Allow-Headers", "Content-Type");
+            response->addHeader("Retry-After", "1");
+            response->addHeader("Location", "/");
 			request->send(response);
 		}
 	});
@@ -106,17 +104,11 @@ void setup()
  
 void loop()
 {
-	if(__go_read_rfid){
-		xTaskCreate(
-			ler,
-			"leitura",
-			2048,
-			NULL,
-			1,
-			&longTaskHandle
-		);
-		__go_read_rfid = false;
-	}
+    if(go_read_tag){
+        uid_tag = ler();
+        tag_already_read = true;
+        go_read_tag = false;
+    }
 }
 
 void mensageminicial()
@@ -136,15 +128,14 @@ void mensagem_inicial_cartao()
 	lcd.print("cartao do leitor");
 }
 
-void ler(void *params) {
+char* ler() {
 	mensagem_inicial_cartao();
 	//Aguarda cartao
 	while ( ! mfrc522.PICC_IsNewCardPresent()) {
 		delay(400);
 		Serial.println("Aguardando");
-		esp_task_wdt_reset();
 	}
-	if ( ! mfrc522.PICC_ReadCardSerial()) return;
+	if ( ! mfrc522.PICC_ReadCardSerial()) return NULL;
  
 	//Mostra UID na serial
 	Serial.print(F("UID do Cartao: "));		//Dump UID
@@ -158,17 +149,12 @@ void ler(void *params) {
 	byte piccType = mfrc522.PICC_GetType(mfrc522.uid.sak);
 	Serial.println(mfrc522.PICC_GetTypeName((MFRC522::PICC_Type)piccType));
 
-	char* uid = getUid(mfrc522);
-	__read = true;
-	read_buffer = uid;
-	__created_task = false;
-
-	vTaskDelete(NULL);
-	mensageminicial();
+    mensageminicial();
+	return getUid(mfrc522);
 }
 
 char* getUid(MFRC522 &rf){
-	char *uidString = new char[rf.uid.size + 1]; // +1 para o caractere nulo de terminação
+	char* uidString = new char[rf.uid.size + 1]; // +1 para o caractere nulo de terminação
 
 	// Limpar a string para garantir que ela esteja vazia antes de preenchê-la
 	memset(uidString, 0, sizeof(uidString));
