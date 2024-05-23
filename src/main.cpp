@@ -45,7 +45,7 @@ void setup() {
 	Serial.println("Configurando....");
 
     tmp_buf = new char[512];
-    memset(tmp_buf, 0, sizeof(tmp_buf));
+    memset(tmp_buf, 0, 512);
 	
 	SPI.begin(); //Inicia SPI bus
 	mfrc522.PCD_Init();	 //Inicia MFRC522
@@ -75,7 +75,7 @@ void setup() {
             timeout = false;
             timeout_counter = 0;
 
-            AsyncWebServerResponse *response = request->beginResponse(408, "text/plain", "TIMEOUT");
+            AsyncWebServerResponse *response = request->beginResponse(408, "application/json", "{\"error\": \"TIMEOUT\",\"messsage\":\"Tempo limite atingido\"}");
 			response->addHeader("Access-Control-Allow-Origin", "*");
 			response->addHeader("Access-Control-Allow-Methods", "POST, GET, OPTIONS");
 			response->addHeader("Access-Control-Allow-Headers", "Content-Type");
@@ -85,19 +85,21 @@ void setup() {
         }
 
 		if(tag_already_read){
-			AsyncWebServerResponse *response = request->beginResponse(200, "text/plain", uid_tag);
+            sprintf((char*)tmp_buf, "{\"message\":\"Lido com sucesso\",\"uid\":\"%s\"}", uid_tag);
+			AsyncWebServerResponse *response = request->beginResponse(200, "application/json", (char*)tmp_buf);
 			response->addHeader("Access-Control-Allow-Origin", "*");
 			response->addHeader("Access-Control-Allow-Methods", "POST, GET, OPTIONS");
 			response->addHeader("Access-Control-Allow-Headers", "Content-Type");
 			request->send(response);
 
+            memset(tmp_buf, 0, 512);
             tag_already_read = false;
             delete[] uid_tag;
             uid_tag = NULL;
 		}
 		else{
             go_read_tag = true;
-			AsyncWebServerResponse *response = request->beginResponse(202);
+			AsyncWebServerResponse *response = request->beginResponse(202, "application/json", "{\"message\":\"Aguardando TAG...\",\"status\":\"WAITNG\"}");
 			response->addHeader("Access-Control-Allow-Origin", "*");
 			response->addHeader("Access-Control-Allow-Methods", "POST, GET, OPTIONS");
 			response->addHeader("Access-Control-Allow-Headers", "Content-Type");
